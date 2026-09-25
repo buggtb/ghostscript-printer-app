@@ -413,6 +413,46 @@ the matching immutable GHCR multi-architecture index, and verifies its SPDX
 SBOM, keyless signatures, GitHub provenance, and OCI metadata. It never
 publishes a mutable channel alias.
 
+### Tracking newer FSDK release lines
+
+`elements/freedesktop-sdk.bst` tracks `freedesktop-sdk-*` (excluding `*beta*`
+and `*rc*` pre-releases) instead of a single pinned release line such as
+`freedesktop-sdk-26.08*`. BuildStream's `git_repo` source resolves the glob to
+the tag with the highest value in version order among matching tags (not the
+most recently created tag), so `scripts/update-fsdk-sources.py --update` (run
+daily by `.github/workflows/update-fsdk-sources.yml`) naturally follows a new
+FSDK release line, such as 26.11 or a future 27.x, once it ships, instead of
+being excluded forever by a line-scoped pattern.
+
+This is a deliberate tradeoff: `26.08 -> 27.08`-style jumps across FSDK major
+lines can carry runtime/ABI changes in FSDK-owned components (Ghostscript,
+CUPS, libcupsfilters, cups-filters, and the rest of the freedesktop-sdk
+junction), not just point releases within one line. That is acceptable here
+only because the daily updater never merges on its own — it runs the CUPS
+patch-chain gate and `just verify`, then opens one PR that a human reviews
+and merges, so a major-line jump gets the same scrutiny as any other change
+rather than landing silently.
+
+Ghostscript, CUPS, cups-filters, and the other FSDK-owned components remain
+single-sourced from FSDK: the repository does not carry a downstream
+Ghostscript version pin or a second Ghostscript artifact. The daily updater
+derives the tracked Ghostscript release straight from whichever FSDK ref
+tracking selects (`elements/components/ghostscript.bst` in that FSDK tree),
+and writes it consistently to `elements/printer-app/ijs.bst`, `VERSION`,
+`README.md`, and the `io.projectbluefin.fsdk.version` /
+`io.projectbluefin.fsdk.ref` OCI labels in
+`elements/oci/ghostscript-printer-app.bst` before running the CUPS
+patch-chain check, a full source fetch, and `just verify`, and only then
+opening one reviewable pull request.
+
+**Source vs. upstream lag.** The appliance's Ghostscript version is whatever
+FSDK's pinned tree bundles, which is itself behind Ghostscript upstream by
+FSDK's own release cadence. Compare `elements/printer-app/ijs.bst`'s `track`
+value against the latest tag at
+<https://github.com/ArtifexSoftware/ghostpdl/tags> to see the current lag; the
+daily updater keeps that gap to "one uncut FSDK release" rather than letting
+it grow indefinitely behind a stale pinned line.
+
 ## BUILDING WITHOUT PACKAGING OR INSTALLATION
 
 You can also do a "quick-and-dirty" build without snapping and without

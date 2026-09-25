@@ -3,7 +3,10 @@ kind: junction
 sources:
   - kind: git_repo
     url: gitlab:freedesktop-sdk/freedesktop-sdk.git
-    track: freedesktop-sdk-26.08*
+    track: freedesktop-sdk-*
+    exclude:
+      - '*beta*'
+      - '*rc*'
     ref: freedesktop-sdk-26.08.1-0-gb02b59ffe19a49a402f357fd5fcb1d552ebc50d7
   - kind: local
     path: patches/cups
