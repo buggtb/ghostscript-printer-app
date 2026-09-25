@@ -40,6 +40,7 @@ metadata:
 15. Treat filter executables by format: use `ldd` only for ELF binaries, and resolve script shebangs plus every invoked command separately. Generated pyppd archives use `#!/usr/bin/env python3`, so each owning element declares the Python runtime even when another aggregate currently supplies it.
 16. Keep `just fetch` on `--ignore-project-source-remotes --source-remote https://cache.projectbluefin.io:11001` rather than re-enabling the GBM source cache, which can stall with `DEADLINE_EXCEEDED`. BuildStream still falls back to upstream source URLs on a cache miss. If the source is absent and a runner cannot reach the upstream mirror, diagnose the pinned source and remote coverage; retries alone cannot repair a persistent missing cache entry or unreachable host. Use a separately verified FSDK update or repair the source mirror at its owner, never silently substitute an unverified tarball.
 17. CUPS's USB backend executable is not proof of functional USB printing: without `libusb-1.0` at configure time, CUPS builds a stub and omits `org.cups.usb-quirks`. Add `components/libusb.bst` as a build dependency to FSDK's private CUPS base, configure with `--enable-libusb`, and add it as a runtime dependency of `cups-daemon-only.bst`. The same CUPS owner then installs `/usr/share/cups/usb/org.cups.usb-quirks`; seed that file into the persistent `USB_QUIRK_DIR/usb` only on first boot, preserving user edits across restarts.
+18. In libcupsfilters 2.2.1, `cfPDFPagesFP()` copies PDF input into a buffered `FILE *` and immediately opens the pathname with PDFio before flushing the buffer. PDFio sees a truncated xref/trailer and reports `Missing Root object`; `gstoraster` then fails with `Unexpected page count`. Backport [OpenPrinting/libcupsfilters@e14bad4](https://github.com/OpenPrinting/libcupsfilters/commit/e14bad406189a66bdeb40131112944bfb58ee0cc) through `patches/libcupsfilters/`, not in application-specific filter code. Test a multi-KB PDF through the real `gstoraster` wrapper; a PostScript-only socket print never enters the broken PDF page-count path.
 
 ## Common Rationalizations
 
@@ -81,6 +82,7 @@ metadata:
 - [ ] The Snap and FSDK CUPS source versions both accept the canonical patches.
 - [ ] Source fetch succeeds on both native CI runners for the pinned FSDK release before claiming a downstream driver build is verified.
 - [ ] The image has a libusb-linked CUPS USB backend and its nonempty default quirks table; an empty state volume receives the table, and a restart preserves edited quirks.
+- [ ] A multi-KB PDF passes `gstoraster` with the real packaged PPD and emits a CUPS raster header; a real IPP PDF job also reaches the socket sink.
 - [ ] Repository-built libraries install their `.pc` files in FSDK's multiarch pkg-config directory and are discoverable from a dependent element's build sandbox.
 - [ ] The exported image runs with the numeric UID/GID, creates runtime directories, and reaches application readiness.
 - [ ] TERM yields signal exit status `143`, not Podman's SIGKILL timeout status `137`; killing a required child makes the container exit nonzero.

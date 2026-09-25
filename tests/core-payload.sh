@@ -8,6 +8,7 @@ port="${PORT:-18010}"
 state_dir="$(mktemp -d)"
 sink_port="$((port + 1000))"
 output_file="$(mktemp)"
+pdf_output_file="$(mktemp)"
 cookie_file="$(mktemp)"
 sink_pid=""
 
@@ -18,7 +19,7 @@ cleanup() {
     wait "$sink_pid" 2>/dev/null || true
   fi
   podman unshare rm -rf "$state_dir"
-  rm -f "$output_file" "$cookie_file"
+  rm -f "$output_file" "$pdf_output_file" "$cookie_file"
 }
 trap cleanup EXIT
 
@@ -89,6 +90,18 @@ podman run --rm --entrypoint /usr/bin/bash "$image" -c '
     exit 1
   fi
   test -s /tmp/foomatic-output.pcl
+
+  gs -q -dNOPAUSE -dBATCH -sDEVICE=pdfwrite \
+    -sOutputFile=/tmp/pdf-filter-input.pdf \
+    /usr/share/ghostscript-printer-app/testpage.ps
+  test "$(stat -c %s /tmp/pdf-filter-input.pdf)" -gt 8192
+  if ! PPD=/tmp/foomatic.ppd /usr/lib/cups/filter/gstoraster \
+    1 nonroot pdf-regression 1 "" /tmp/pdf-filter-input.pdf \
+    > /tmp/pdf-output.raster 2>/tmp/pdf-filter.log; then
+    cat /tmp/pdf-filter.log >&2
+    exit 1
+  fi
+  [[ "$(od -An -tx1 -N4 /tmp/pdf-output.raster)" == " 33 53 61 52" ]]
 '
 chmod 0777 "$state_dir"
 
@@ -161,4 +174,28 @@ for _ in $(seq 1 120); do
   sleep 0.5
 done
 [[ "$jobs" == *"completed"* ]]
+
+# A PDF job must traverse libcupsfilters' page-count path before Ghostscript.
+python3 tests/socket-sink.py "$sink_port" "$pdf_output_file" &
+sink_pid=$!
+podman cp tests/print-pdf.test "$name:/tmp/print-pdf.test"
+podman exec "$name" /usr/bin/bash -c '
+  gs -q -dBATCH -dNOPAUSE -sDEVICE=pdfwrite \
+    -sOutputFile=/tmp/pdf-regression.pdf \
+    /usr/share/ghostscript-printer-app/testpage.ps
+  test "$(stat -c %s /tmp/pdf-regression.pdf)" -gt 8192
+'
+podman exec "$name" ipptool -f /tmp/pdf-regression.pdf "$printer_uri" /tmp/print-pdf.test
+for _ in $(seq 1 120); do
+  [[ -s "$pdf_output_file" ]] && break
+  sleep 0.5
+done
+if [[ ! -s "$pdf_output_file" ]]; then
+  podman exec "$name" cat /var/lib/ghostscript-printer-app/ghostscript-printer-app.log >&2 || true
+  printf 'FAIL: PDF print job produced no socket output\n' >&2
+  exit 1
+fi
+wait "$sink_pid"
+sink_pid=""
+python3 -c 'import pathlib, sys; assert pathlib.Path(sys.argv[1]).read_bytes().startswith(b"\x1b%-12345X")' "$pdf_output_file"
 printf 'OK: core driver payload, HTTPS, and print conversion are available\n'
