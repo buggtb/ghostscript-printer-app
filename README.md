@@ -357,7 +357,7 @@ there is no `latest`, `edge`, or `stable` OCI tag.
 Install Podman with a working rootless user namespace, then select an explicit release:
 
 ```sh
-version=10.07.1-1
+version=10.07.1-2
 image="ghcr.io/projectbluefin/ghostscript-printer-app:${version}"
 podman pull "$image"
 podman volume create ghostscript-printer-app

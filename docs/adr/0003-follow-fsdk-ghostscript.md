@@ -1,0 +1,5 @@
+# Follow freedesktop-sdk's Ghostscript release
+
+**Status:** Proposed; user-selected design, pending repository review.
+
+The OCI appliance uses the Ghostscript source/version provided by its reviewed freedesktop-sdk junction; it does not independently advance the Ghostscript source ref or stage a second Ghostscript build merely to match an earlier upstream release. The junction already patches FSDK's Ghostscript element to use bundled zlib, so that patched element does **not** share an artifact key with FSDK's unpatched Ghostscript in the remote CAS. Other identical FSDK components can reuse cached artifacts; this must be measured, not assumed. Following FSDK keeps one Ghostscript source owner and reduces local pin maintenance, at the cost of freshness being bounded by the selected FSDK release line. Track newer compatible FSDK releases, surface the packaged-versus-upstream Ghostscript lag, and request an FSDK update when lag matters; synchronize `VERSION` and IJS to the actual FSDK pin and verify the real appliance before publishing.
