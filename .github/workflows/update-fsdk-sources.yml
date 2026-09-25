@@ -69,35 +69,54 @@ jobs:
             git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $basic" "$@"
           }
 
-          # Determine whether the bot's usual proposal branch is safe to reuse: it is
-          # safe only when it does not exist yet, or its current tip is still a commit
-          # the bot produced (i.e. no reviewer has amended or added commits since).
+          # Find a proposal branch that is safe to reuse: walk auto/update-fsdk-sources,
+          # -2, -3, ... and reuse the first one that either does not exist yet, or whose
+          # current tip was produced entirely by the bot (author AND committer, so an
+          # amend or rebase by a reviewer is still detected even though it preserves
+          # the original author). Any branch owned by someone else is skipped, not
+          # overwritten, and a fresh numbered branch is opened instead.
           base_branch=auto/update-fsdk-sources
-          branch="$base_branch"
+          branch=""
+          remote_head=""
           conflict=false
-          remote_head="$(git ls-remote "$remote" "refs/heads/$base_branch" | cut -f1)"
-          if [[ -n "$remote_head" ]]; then
-            auth_git fetch "$remote" "$base_branch"
-            tip_email="$(git log -1 --format='%ae' FETCH_HEAD)"
-            if [[ "$tip_email" != "$bot_email" ]]; then
+          n=1
+          while :; do
+            if [[ $n -eq 1 ]]; then
+              candidate="$base_branch"
+            else
+              candidate="${base_branch}-${n}"
               conflict=true
-              n=2
-              while git ls-remote --exit-code "$remote" "refs/heads/${base_branch}-${n}" >/dev/null 2>&1; do
-                n=$((n + 1))
-              done
-              branch="${base_branch}-${n}"
             fi
-          fi
+            head="$(git ls-remote "$remote" "refs/heads/$candidate" | cut -f1)"
+            if [[ -z "$head" ]]; then
+              branch="$candidate"
+              break
+            fi
+            auth_git fetch "$remote" "$candidate"
+            author_email="$(git log -1 --format='%ae' FETCH_HEAD)"
+            committer_email="$(git log -1 --format='%ce' FETCH_HEAD)"
+            if [[ "$author_email" == "$bot_email" && "$committer_email" == "$bot_email" ]]; then
+              branch="$candidate"
+              remote_head="$head"
+              break
+            fi
+            n=$((n + 1))
+            if [[ $n -gt 50 ]]; then
+              printf '::error::Could not find a bot-owned or free proposal branch after 50 attempts.\n'
+              exit 1
+            fi
+          done
 
           git switch --create "$branch"
           git add VERSION README.md elements
           git commit -m 'chore(deps): update FSDK appliance sources'
 
-          if [[ -n "$remote_head" && "$conflict" == "false" ]]; then
+          if [[ -n "$remote_head" ]]; then
             # Reuse of a bot-owned branch: atomically refuse the push if the remote
-            # head has moved since we inspected it (e.g. a concurrent human edit).
-            if ! auth_git push --force-with-lease="$base_branch:$remote_head" "$remote" "HEAD:refs/heads/$base_branch"; then
-              printf '::error::Refusing to force-push %s: its head moved since inspection, which looks like a reviewer edit landed concurrently. Re-run this workflow once the branch settles.\n' "$base_branch"
+            # head has moved since we inspected it (e.g. a concurrent human edit,
+            # amend, or rebase landed between the ownership check and the push).
+            if ! auth_git push --force-with-lease="$branch:$remote_head" "$remote" "HEAD:refs/heads/$branch"; then
+              printf '::error::Refusing to force-push %s: its head moved since inspection, which looks like a reviewer edit landed concurrently. Re-run this workflow once the branch settles.\n' "$branch"
               exit 1
             fi
           else
@@ -105,9 +124,9 @@ jobs:
           fi
 
           if [[ "$conflict" == "true" ]]; then
-            printf '::warning::%s has commits not authored by mergeraptor[bot]; a reviewer appears to have amended it. Opened a fresh proposal branch %s instead of overwriting it.\n' "$base_branch" "$branch"
+            printf '::warning::%s has commits not owned by mergeraptor[bot] (author or committer differs); a reviewer appears to have amended or rebased it. Reused/opened proposal branch %s instead of overwriting it.\n' "$base_branch" "$branch"
             if existing="$(gh pr list --head "$base_branch" --state open --json number --jq '.[0].number')" && [[ -n "$existing" ]]; then
-              gh pr comment "$existing" --body "A new scheduled FSDK source update was proposed on \`$branch\` instead of updating this branch, because this branch has commits not authored by mergeraptor[bot] (a reviewer appears to have amended it). This PR was left untouched to avoid a destructive overwrite."
+              gh pr comment "$existing" --body "A new scheduled FSDK source update was proposed on \`$branch\` instead of updating this branch, because this branch has commits not owned by mergeraptor[bot] (author or committer differs — a reviewer appears to have amended or rebased it). This PR was left untouched to avoid a destructive overwrite."
             fi
           fi
 
@@ -116,10 +135,10 @@ jobs:
           else
             body='Automated atomic update of the freedesktop-sdk junction and repository-owned BuildStream sources. The workflow completed the CUPS patch-chain gate and full appliance verification before opening this PR. Auto-merge is intentionally disabled.'
             if [[ "$conflict" == "true" ]]; then
-              body="$body"$'\n\n'"This is a fresh proposal branch: the usual \`$base_branch\` branch has commits not authored by mergeraptor[bot], so it was left untouched instead of being force-pushed over."
+              body="$body"$'\n\n'"This proposal branch was reused or opened fresh because an earlier \`$base_branch\`-numbered branch had commits not owned by mergeraptor[bot], so it was left untouched instead of being force-pushed over."
             fi
             gh pr create \
-              --base main \
+              --base testing \
               --head "$branch" \
               --title 'chore(deps): update FSDK appliance sources' \
               --body "$body"
