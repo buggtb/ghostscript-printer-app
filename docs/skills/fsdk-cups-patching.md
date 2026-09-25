@@ -38,6 +38,7 @@ metadata:
 13. Stage component-specific source patches in separate junction directories. `patches/cups-filters/` is injected into FSDK's existing `components/cups-filters.bst`; never mix it with CUPS or libcupsfilters patches.
 14. Keep Ghostscript on its bundled zlib. FSDK's zlib-ng compatibility library corrupts compiled Ghostscript ROMFS reads when a full-size IJS page lazily loads an ICC profile; the failure appears as `free(): invalid size` from `s_block_read_process`. A default Letter pxljr conversion is the regression probe.
 15. Treat filter executables by format: use `ldd` only for ELF binaries, and resolve script shebangs plus every invoked command separately. Generated pyppd archives use `#!/usr/bin/env python3`, so each owning element declares the Python runtime even when another aggregate currently supplies it.
+16. Keep `just fetch` on `--ignore-project-source-remotes --source-remote https://cache.projectbluefin.io:11001` rather than re-enabling the GBM source cache, which can stall with `DEADLINE_EXCEEDED`. BuildStream still falls back to upstream source URLs on a cache miss. If the source is absent and a runner cannot reach the upstream mirror, diagnose the pinned source and remote coverage; retries alone cannot repair a persistent missing cache entry or unreachable host. Use a separately verified FSDK update or repair the source mirror at its owner, never silently substitute an unverified tarball.
 
 ## Common Rationalizations
 
@@ -66,6 +67,7 @@ metadata:
 - Running `ldd` on shell or Python filters; `not a dynamic executable` is not an ELF closure result.
 - Letting aggregate composition mask an undeclared pyppd Python runtime or shell-filter command dependency.
 - Building Ghostscript against FSDK's zlib-ng compatibility library when the appliance ships an IJS driver.
+- Removing the explicit Bluefin source-cache flags to work around an unrelated upstream mirror failure; this reintroduces the GBM source-cache timeout.
 
 ## Verification
 
@@ -75,6 +77,7 @@ metadata:
 - [ ] The staged CUPS source contains the DNS-SD and `USB_QUIRK_DIR` changes.
 - [ ] The CUPS base still exposes `cups-libs` and `cups-license`.
 - [ ] The Snap and FSDK CUPS source versions both accept the canonical patches.
+- [ ] Source fetch succeeds on both native CI runners for the pinned FSDK release before claiming a downstream driver build is verified.
 - [ ] Repository-built libraries install their `.pc` files in FSDK's multiarch pkg-config directory and are discoverable from a dependent element's build sandbox.
 - [ ] The exported image runs with the numeric UID/GID, creates runtime directories, and reaches application readiness.
 - [ ] TERM yields signal exit status `143`, not Podman's SIGKILL timeout status `137`; killing a required child makes the container exit nonzero.
