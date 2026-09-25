@@ -58,22 +58,69 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          branch=auto/update-fsdk-sources
+          bot_email='267480593+mergeraptor[bot]@users.noreply.github.com'
           git config user.name 'mergeraptor[bot]'
-          git config user.email '267480593+mergeraptor[bot]@users.noreply.github.com'
+          git config user.email "$bot_email"
+
+          basic="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          echo "::add-mask::$basic"
+          remote="https://github.com/${REPOSITORY}.git"
+          auth_git() {
+            git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $basic" "$@"
+          }
+
+          # Determine whether the bot's usual proposal branch is safe to reuse: it is
+          # safe only when it does not exist yet, or its current tip is still a commit
+          # the bot produced (i.e. no reviewer has amended or added commits since).
+          base_branch=auto/update-fsdk-sources
+          branch="$base_branch"
+          conflict=false
+          remote_head="$(git ls-remote "$remote" "refs/heads/$base_branch" | cut -f1)"
+          if [[ -n "$remote_head" ]]; then
+            auth_git fetch "$remote" "$base_branch"
+            tip_email="$(git log -1 --format='%ae' FETCH_HEAD)"
+            if [[ "$tip_email" != "$bot_email" ]]; then
+              conflict=true
+              n=2
+              while git ls-remote --exit-code "$remote" "refs/heads/${base_branch}-${n}" >/dev/null 2>&1; do
+                n=$((n + 1))
+              done
+              branch="${base_branch}-${n}"
+            fi
+          fi
+
           git switch --create "$branch"
           git add VERSION README.md elements
           git commit -m 'chore(deps): update FSDK appliance sources'
-          basic="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
-          echo "::add-mask::$basic"
-          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $basic" \
-            push --force "https://github.com/${REPOSITORY}.git" "HEAD:refs/heads/$branch"
+
+          if [[ -n "$remote_head" && "$conflict" == "false" ]]; then
+            # Reuse of a bot-owned branch: atomically refuse the push if the remote
+            # head has moved since we inspected it (e.g. a concurrent human edit).
+            if ! auth_git push --force-with-lease="$base_branch:$remote_head" "$remote" "HEAD:refs/heads/$base_branch"; then
+              printf '::error::Refusing to force-push %s: its head moved since inspection, which looks like a reviewer edit landed concurrently. Re-run this workflow once the branch settles.\n' "$base_branch"
+              exit 1
+            fi
+          else
+            auth_git push "$remote" "HEAD:refs/heads/$branch"
+          fi
+
+          if [[ "$conflict" == "true" ]]; then
+            printf '::warning::%s has commits not authored by mergeraptor[bot]; a reviewer appears to have amended it. Opened a fresh proposal branch %s instead of overwriting it.\n' "$base_branch" "$branch"
+            if existing="$(gh pr list --head "$base_branch" --state open --json number --jq '.[0].number')" && [[ -n "$existing" ]]; then
+              gh pr comment "$existing" --body "A new scheduled FSDK source update was proposed on \`$branch\` instead of updating this branch, because this branch has commits not authored by mergeraptor[bot] (a reviewer appears to have amended it). This PR was left untouched to avoid a destructive overwrite."
+            fi
+          fi
+
           if existing="$(gh pr list --head "$branch" --state open --json number --jq '.[0].number')" && [[ -n "$existing" ]]; then
             printf 'Updated dependency PR #%s\n' "$existing"
           else
+            body='Automated atomic update of the freedesktop-sdk junction and repository-owned BuildStream sources. The workflow completed the CUPS patch-chain gate and full appliance verification before opening this PR. Auto-merge is intentionally disabled.'
+            if [[ "$conflict" == "true" ]]; then
+              body="$body"$'\n\n'"This is a fresh proposal branch: the usual \`$base_branch\` branch has commits not authored by mergeraptor[bot], so it was left untouched instead of being force-pushed over."
+            fi
             gh pr create \
               --base main \
               --head "$branch" \
               --title 'chore(deps): update FSDK appliance sources' \
-              --body 'Automated atomic update of the freedesktop-sdk junction and repository-owned BuildStream sources. The workflow completed the CUPS patch-chain gate and full appliance verification before opening this PR. Auto-merge is intentionally disabled.'
+              --body "$body"
           fi
