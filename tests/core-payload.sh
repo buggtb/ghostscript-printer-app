@@ -31,6 +31,7 @@ podman run --rm --entrypoint /usr/bin/bash "$image" -c '
   test -f /usr/share/ghostscript-printer-app/testpage.ps
   test -x /usr/bin/python3
   test -x /usr/bin/xz
+  test -s /usr/share/cups/usb/org.cups.usb-quirks
 
   executables=(
     /usr/bin/ghostscript-printer-app
@@ -58,6 +59,7 @@ podman run --rm --entrypoint /usr/bin/bash "$image" -c '
     dependencies="$(ldd "$executable")"
     [[ "$dependencies" != *"not found"* ]]
   done
+  [[ "$(ldd /usr/lib/cups/backend/usb)" == *"libusb-1.0.so"* ]]
 
   devices="$(gs -h 2>&1)"
   [[ "$devices" == *"cups"* ]]

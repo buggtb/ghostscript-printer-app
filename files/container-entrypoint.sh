@@ -11,6 +11,9 @@ mkdir -p "$state_dir/ppd" "$state_dir/spool" "$state_dir/usb" "$state_dir/cups/s
 if [[ ! -e "$state_dir/cups/snmp.conf" ]]; then
   cp /etc/cups/snmp.conf "$state_dir/cups/snmp.conf"
 fi
+if [[ ! -e "$state_dir/usb/org.cups.usb-quirks" && ! -L "$state_dir/usb/org.cups.usb-quirks" ]]; then
+  cp /usr/share/cups/usb/org.cups.usb-quirks "$state_dir/usb/org.cups.usb-quirks"
+fi
 if [[ ! -e "$state_dir/pnm2ppa/pnm2ppa.conf" ]]; then
   cp /usr/share/ghostscript-printer-app/pnm2ppa.conf "$state_dir/pnm2ppa/pnm2ppa.conf"
 fi
