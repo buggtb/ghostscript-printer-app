@@ -412,6 +412,9 @@ For real hardware, follow the separate
 [USB and network printer validation procedure](docs/oci-physical-validation.md).
 Synthetic CI results are not physical-printer evidence.
 
+For driver and version differences against the current OpenPrinting Snap,
+see the [Snap parity matrix](docs/snap-parity-matrix.md).
+
 Merge-queue CI restores BuildStream's local cache (`cas`, `artifacts`,
 `source_protos`) from the Actions cache. The `BuildStream cache refill` workflow
 rebuilds and saves it per architecture on `testing` pushes and nightly (saved only when an arch fits in 9000 MB uncompressed; a larger cache fails the refill); reset it with `gh cache delete --all`.
