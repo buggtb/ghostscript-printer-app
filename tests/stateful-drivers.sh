@@ -160,13 +160,13 @@ podman exec "$name" /usr/bin/bash -c '
   (("$(stat -c %s "$work/foo2zjs-first.prn")" > 500))
   printf "OK: foo2zjs profile-backed conversion\n"
 
+  # The OAKT header records wall-clock time, so byte-for-byte repeats are invalid.
+  foo2oak-wrapper "$work/page.ps" > "$work/foo2oak.prn" 2> "$work/foo2oak.log"
   for suffix in first second; do
-    foo2oak-wrapper "$work/page.ps" > "$work/foo2oak-$suffix.prn" 2> "$work/foo2oak-$suffix.log"
     foo2hiperc-wrapper "$work/page.ps" > "$work/foo2hiperc-$suffix.prn" 2> "$work/foo2hiperc-$suffix.log"
   done
-  assert_repeatable "$work/foo2oak-first.prn" "$work/foo2oak-second.prn"
-  [[ "$(od -An -tx1 -N 4 "$work/foo2oak-first.prn")" == " 4f 41 4b 54" ]]
-  (("$(stat -c %s "$work/foo2oak-first.prn")" > 1000))
+  [[ "$(od -An -tx1 -N 4 "$work/foo2oak.prn")" == " 4f 41 4b 54" ]]
+  (("$(stat -c %s "$work/foo2oak.prn")" > 1000))
   assert_repeatable "$work/foo2hiperc-first.prn" "$work/foo2hiperc-second.prn"
   [[ "$(od -An -tx1 -N 8 "$work/foo2hiperc-first.prn")" == " 1b 25 2d 31 32 33 34 35" ]]
   (("$(stat -c %s "$work/foo2hiperc-first.prn")" > 1000))
