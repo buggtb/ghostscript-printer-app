@@ -21,11 +21,13 @@ Ghostscript follows the reviewed FreeDesktop SDK (FSDK) pin instead, per
   named family therefore fails the full image parity gate, not just this
   document.
 - Snap source versions below come from `snap/snapcraft.yaml`'s `source-tag`
-  fields, still committed in this repository. FSDK source versions come from
-  each `elements/printer-app/*.bst` junction's `ref:`/`track:`. Where a
-  component is inherited from the pinned `freedesktop-sdk.bst` junction
-  rather than pinned by an element in this repository, its exact upstream
-  version is **unknown** here and is recorded as such rather than guessed.
+  fields, still committed in this repository. OCI source versions come from
+  each `elements/printer-app/*.bst` element's `ref:`/`track:`. Components
+  inherited from the shared printing base (`fsdk-containers.bst:printing/base.bst`,
+  junctioned at a pinned commit in `elements/fsdk-containers.bst`) or from the
+  FSDK release that junction pins are marked **inherited**; their versions
+  below were read from those pinned elements on 2026-09-25 and go stale with
+  the next `update-base.yml` bump.
 - The Snap Store's currently published revision, architectures, and OCI
   image digest are **unknown** in this document: they are not committed
   artifacts of this repository and must be read from the Snap Store listing
@@ -36,9 +38,9 @@ Ghostscript follows the reviewed FreeDesktop SDK (FSDK) pin instead, per
 
 | Property | This FSDK OCI appliance | OpenPrinting Snap |
 | --- | --- | --- |
-| Application version | `VERSION` file, currently `10.07.1-1` (checked into this repo) | `snap/snapcraft.yaml` `version:`, currently `10.08.0-1` (checked into this repo); Snap Store listing revision is unknown here |
+| Application version | `VERSION` file, currently `10.07.1-2` (checked into this repo) | `snap/snapcraft.yaml` `version:`, currently `10.08.0-1` (checked into this repo); Snap Store listing revision is unknown here |
 | Build architectures | `amd64`, `arm64` (see `tests/appliance-parity.sh` architecture cases) | `amd64`, `arm64`, `armhf`, `riscv64` (`snap/snapcraft.yaml` `architectures:`) — `armhf`/`riscv64` are not produced by this repository |
-| FreeDesktop SDK pin | `freedesktop-sdk-26.08rc.1` (`elements/freedesktop-sdk.bst`) | Not applicable; Snap does not use FSDK |
+| FreeDesktop SDK pin | `freedesktop-sdk-26.08.1`, reached through `elements/fsdk-containers.bst` (recorded in the `io.projectbluefin.fsdk.*` labels of `elements/oci/ghostscript-printer-app.bst`) | Not applicable; Snap does not use FSDK |
 | OCI image digest | Produced per build; see release evidence and `org.opencontainers.image.*` labels asserted by `tests/appliance-parity.sh` | Not applicable; Snap has no OCI digest |
 | Uncompressed size ceiling | 500 MiB (524,288,000 bytes), enforced by `tests/appliance-parity.sh` | Not tracked here; unknown |
 
@@ -46,20 +48,20 @@ Ghostscript follows the reviewed FreeDesktop SDK (FSDK) pin instead, per
 
 Legend: **match** = same upstream ref; **differs** = pinned to a different
 upstream version, fork, or revision; **inherited** = this repository does
-not pin the component directly, it comes from the `freedesktop-sdk.bst`
-junction, so its exact version is unknown without inspecting that pinned
-FSDK release.
+not pin the component directly; it comes from the shared fsdk-containers
+printing base or the FSDK release it pins, and the version shown is the one
+those pinned elements resolved to when this document was last edited.
 
 | Component | FSDK source ref | Snap source ref (`snap/snapcraft.yaml`) | Status |
 | --- | --- | --- | --- |
-| PAPPL | `elements/printer-app/pappl.bst`: `v1.4.12` | `pappl` part: `v1.4.12` | match |
-| pappl-retrofit | `elements/printer-app/pappl-retrofit.bst`: commit `1626b338` (tracks `master`) | `pappl-retrofit` part: unpinned `master` (no `source-tag`) | unknown — both track upstream `master`; exact commits cannot be compared without re-resolving the Snap build at a point in time |
-| Ghostscript (`gs` binary) | Inherited from `freedesktop-sdk.bst:components/ghostscript.bst` (FSDK `26.08rc.1`); `elements/printer-app/ijs.bst` separately pins `ghostpdl-10.07.1` for the IJS driver only | `ghostscript` part: `ghostpdl-10.08.0` | differs — the Snap's Ghostscript is one minor version ahead (`10.08.0` vs. this repo's IJS-only pin of `10.07.1`); the application's own `gs` binary version is unknown here and depends on the FSDK `26.08rc.1` payload, consistent with the "no requirement to match Snap version when FSDK lags" outcome of this issue |
-| CUPS (libcups, backends, `rastertoepson`/`rastertohp`/`rastertolabel`) | Inherited from `freedesktop-sdk.bst:components/cups.bst`, plus local patches under `patches/cups` | `cups` part: `v2.4.19` | inherited — exact FSDK-provided CUPS version unknown here |
-| libcupsfilters | Inherited from FSDK, plus local patches under `patches/libcupsfilters` | `libcupsfilters` part: `2.2.1` | inherited — exact FSDK-provided version unknown here |
-| libppd | Inherited from `freedesktop-sdk.bst:components/cups-filters.bst` family | `libppd` part: `2.1.1` | inherited — exact FSDK-provided version unknown here |
-| cups-filters (foomatic-rip, gstoraster, pdftops, rastertoescpx, rastertopclx) | Inherited from FSDK, plus local patches under `patches/cups-filters` | `cups-filters` part: `2.0.1` | inherited — exact FSDK-provided version unknown here |
-| foomatic-db (PPD/manufacturer data) | Inherited from `freedesktop-sdk.bst:components/foomatic-db.bst` (used by `elements/printer-app/core-payload.bst`) | `foomatic-db` part: `20240504` | inherited — exact FSDK-provided snapshot date unknown here |
+| PAPPL | Shared base `fsdk-containers.bst:printing/pappl.bst`: `v1.4.12` | `pappl` part: `v1.4.12` | match |
+| pappl-retrofit | Shared base `fsdk-containers.bst:printing/pappl-retrofit.bst`: commit `1626b338` (tracks `master`) | `pappl-retrofit` part: unpinned `master` (no `source-tag`) | **differs** — the shared base pins a specific commit (`1626b338`) on `master`, while the Snap floats an unpinned `master` build; both track the same upstream branch, but the exact commits are not the same and cannot be compared further without re-resolving the Snap build at a point in time |
+| Ghostscript (`gs` binary) | Inherited from the shared base (`fsdk-containers.bst:freedesktop-sdk.bst:components/ghostscript.bst`, FSDK `26.08.1`): `ghostpdl-10.07.1`; `elements/printer-app/ijs.bst` separately pins `ghostpdl-10.07.1` for the IJS driver only | `ghostscript` part: `ghostpdl-10.08.0` | **differs** — the Snap's Ghostscript is one minor version ahead (`10.08.0` vs. `10.07.1`), consistent with the "no requirement to match Snap version when FSDK lags" outcome of this issue |
+| CUPS (libcups, backends, `rastertoepson`/`rastertohp`/`rastertolabel`) | Inherited from the shared base (FSDK `components/cups.bst`, `v2.4.19`), with the patches under fsdk-containers `patches/printing/cups/` | `cups` part: `v2.4.19` | inherited — same upstream tag |
+| libcupsfilters | Inherited from the shared base (FSDK `components/libcupsfilters.bst`, `2.2.1`), with the patches under fsdk-containers `patches/printing/libcupsfilters/` | `libcupsfilters` part: `2.2.1` | inherited — same upstream tag |
+| libppd | Inherited from the shared base (FSDK `components/libppd.bst`, `2.1.1`) | `libppd` part: `2.1.1` | inherited — same upstream tag |
+| cups-filters (foomatic-rip, gstoraster, pdftops, rastertoescpx, rastertopclx) | Inherited from the shared base (FSDK `components/cups-filters.bst`, `2.0.1`), with the patches under fsdk-containers `patches/printing/cups-filters/` | `cups-filters` part: `2.0.1` | inherited — same upstream tag |
+| foomatic-db (PPD/manufacturer data) | Inherited from `fsdk-containers.bst:printing/foomatic-db.bst` (FSDK `components/foomatic-db.bst`, `20240504-10-g76dd1e31`), used by `elements/printer-app/core-payload.bst` | `foomatic-db` part: `20240504` | inherited — FSDK pins 10 commits past the Snap's `20240504` tag |
 | foomatic-db-engine (`foomatic-compiledb`) | `elements/printer-app/foomatic-db-engine.bst`: commit `e4e7b9cd` (tracks `master`) | Debian package `foomatic-db-engine` via `build-packages:`, no pinned source | unknown — different packaging model, versions not directly comparable |
 | brlaser | `elements/printer-app/brlaser.bst`: `pdewacht/brlaser` `v6` | `brlaser` part: `Owl-Maintain/brlaser` `v6.2.8` | **differs** — the Snap has moved to a different upstream fork (`Owl-Maintain`) at a newer tag; this repository still tracks the original `pdewacht/brlaser` `v6` |
 | SpliX | `elements/printer-app/splix.bst`: `debian/2.0.1-1` | `splix` part: `debian/2.0.1-2` | **differs** — Snap is one Debian packaging revision ahead |
@@ -80,6 +82,20 @@ FSDK release.
 | pyppd | `elements/printer-app/pyppd.bst`: `release-1-1-0` | `pyppd` part: `release-1-1-0` | match |
 | qpdf | Not pinned separately; PDF handling comes through the inherited FSDK `cups-filters`/`libppd`/`poppler` stack | `qpdf` part: `v11.10.1` | unknown — this repository's architecture does not carry a standalone `qpdf` build, so there is no directly comparable pin |
 
+## Keeping the version columns honest
+
+The "Application version" and "FreeDesktop SDK pin" rows above are
+hand-transcribed from `VERSION` and the FSDK release pinned through
+`elements/fsdk-containers.bst` at the time this document was last edited, not
+generated. They will go
+stale exactly like any other hard-coded value the moment either file changes
+(for example, a daily `update-base.yml` bump or a `VERSION` bump) without this
+document being re-edited in the same PR. `tests/appliance-parity.sh` does not
+check this document's prose, only the driver/backend/PPD-provider inventory
+below. Treat these two rows as due for a manual re-check whenever `VERSION`
+or `elements/fsdk-containers.bst` changes, until they are generated from
+those files directly.
+
 ## Reading this matrix
 
 - Every driver family in this table corresponds to a family enforced by
@@ -91,10 +107,10 @@ FSDK release.
   missing drivers: the driver family itself is present and gated in both
   distributions, only the pinned upstream revision differs.
 - "Inherited"/"unknown" rows are components this repository does not pin
-  directly; they come from the reviewed `freedesktop-sdk.bst` release.
-  Resolving their exact upstream version requires inspecting that pinned
-  FSDK release's own component manifest, which is out of scope for this
-  document and does not block the Ghostscript-driver parity gate.
+  directly; they come from the shared fsdk-containers printing base and the
+  FSDK release it pins. Their versions above are a snapshot of those pinned
+  elements; re-check them after an `elements/fsdk-containers.bst` bump. They
+  do not block the Ghostscript-driver parity gate.
 - This document does not assert physical print output parity. See
   [`docs/oci-physical-validation.md`](oci-physical-validation.md) for what
   remains unverified without hardware.
