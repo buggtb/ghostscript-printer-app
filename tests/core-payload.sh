@@ -93,11 +93,16 @@ podman run --rm --entrypoint /usr/bin/bash "$image" -c '
   # Direct gstoraster PDF regression probe. This is the filter that caught the
   # libcupsfilters temp-file page-count bug (upstream fix e14bad406189a66b),
   # so it must stay focused on cfFilterGhostscript rather than a Foomatic-only
-  # route. Bound the resolution to the lowest PrinterResolution choice the
-  # generic pxlcolor PPD advertises (300x300dpi) instead of its 1200dpi
-  # default: at 1200dpi a Letter page renders to roughly 358 MB of raster,
-  # which needlessly burns runner /tmp space and time; 300x300dpi keeps the
-  # same code path with a page in the tens of megabytes.
+  # route. The generic pxlcolor PPD only exposes PrinterResolution as a
+  # Foomatic comment (no CUPS *Resolution option), so the option keyword
+  # alone does not change what the raster header reports: cfFilterGhostscript
+  # still reads *DefaultResolution from the PPD. Rewrite that default to
+  # 300dpi directly instead of its 1200dpi default: at 1200dpi a Letter page
+  # renders to roughly 358 MB of raster, which needlessly burns runner /tmp
+  # space and time; 300dpi keeps the same code path with a page in the tens
+  # of megabytes, and the header decode below confirms the bound actually
+  # took effect by asserting the resulting pixel dimensions.
+  sed -i "s/^\*DefaultResolution: 1200dpi\$/*DefaultResolution: 300dpi/" /tmp/foomatic.ppd
   gs -q -dNOPAUSE -dBATCH -sDEVICE=pdfwrite \
     -sOutputFile=/tmp/pdf-filter-input.pdf \
     /usr/share/ghostscript-printer-app/testpage.ps
@@ -135,6 +140,7 @@ elif sync in (b"2SaR", b"3SaR"):
     endian = "<"
 else:
     raise SystemExit(f"FAIL: unrecognized raster sync word {sync!r}")
+version = 2 if sync in (b"RaS2", b"2SaR") else 3
 
 header_size = 1796
 header = data[4:4 + header_size]
@@ -158,9 +164,14 @@ payload = data[4 + header_size:]
 if not payload:
     raise SystemExit("FAIL: raster output has a header but no page data")
 
-if compression == 0:
-    # Version 3 headers (and version 2 with cupsCompression=0) are always
-    # stored uncompressed: exactly cupsBytesPerLine * cupsHeight bytes.
+if version == 3 and compression == 0:
+    # Only version 3 (3SaR/RaS3) headers are reliably uncompressed when
+    # cupsCompression is 0. Version 2 (2SaR/RaS2) streams are always
+    # PackBits-compressed regardless of what cupsCompression reports
+    # (see https://www.cups.org/doc/spec-raster.html), so an exact
+    # bytes_per_line * cups_height length check would wrongly fail a good
+    # v2 page. The image emits 3SaR today, so this bound stays useful
+    # without penalizing a future v2 stream.
     expected = bytes_per_line * cups_height
     if len(payload) != expected:
         raise SystemExit(
