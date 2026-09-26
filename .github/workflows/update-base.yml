@@ -140,8 +140,16 @@ jobs:
 
           if [[ "$conflict" == "true" ]]; then
             printf '::warning::%s has commits not authored and committed by mergeraptor[bot]; a reviewer appears to have amended it. Opened %s instead of overwriting it.\n' "$conflicted_branch" "$branch"
-            if existing="$(gh pr list --head "$conflicted_branch" --base testing --state open --json number --jq '.[0].number')" && [[ -n "$existing" ]]; then
-              gh pr comment "$existing" --body "A new scheduled fsdk-containers update was proposed on \`$branch\` instead of updating this branch, because this branch has commits not authored and committed by mergeraptor[bot] (a reviewer appears to have amended it). This PR was left untouched to avoid a destructive overwrite."
+            # Only post this notice the first time the proposal branch is
+            # created (remote_head empty means $branch did not exist yet).
+            # Once it exists, every subsequent scheduled run reuses it via
+            # force-with-lease, and would otherwise repeat this comment on
+            # the reviewer's open PR once per day for as long as it stays
+            # open.
+            if [[ -z "$remote_head" ]]; then
+              if existing="$(gh pr list --head "$conflicted_branch" --base testing --state open --json number --jq '.[0].number')" && [[ -n "$existing" ]]; then
+                gh pr comment "$existing" --body "A new scheduled fsdk-containers update was proposed on \`$branch\` instead of updating this branch, because this branch has commits not authored and committed by mergeraptor[bot] (a reviewer appears to have amended it). This PR was left untouched to avoid a destructive overwrite."
+              fi
             fi
           fi
 
